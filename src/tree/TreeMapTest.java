@@ -59,7 +59,7 @@ class TreeMapTest {
             keys.add(k);
         }
 
-        assertEquals("[1, 2, 4, 5, 12, 15, 21, 23, 24, 26, 33, 35]", keys);
+        assertEquals("[1, 2, 4, 5, 12, 15, 21, 23, 24, 26, 33, 35]", keys.toString());
     }
 
     @Test

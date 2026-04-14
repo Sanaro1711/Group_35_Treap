@@ -29,42 +29,87 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
 
     /**
      * Returns the height of the given tree position.
+     * External nodes (null entry) have height 0; internal nodes use cached height in {@code aux}.
      */
     protected int height(Position<Entry<K, V>> p) {
-        // TODO
-        return 0;
+        if (p == null || p.getElement() == null) {
+            return 0;
+        }
+        return tree.getAux(p);
     }
 
     /**
      * Recomputes the height of the given position based on its children's heights.
+     * Call after children's {@code aux} values are up to date (e.g. while walking up from a leaf).
      */
     protected void recomputeHeight(Position<Entry<K, V>> p) {
-        // TODO
+        if (p == null) {
+            return;
+        }
+        if (p.getElement() == null) {
+            tree.setAux(p, 0);
+        } else {
+            tree.setAux(p, 1 + Math.max(height(left(p)), height(right(p))));
+        }
     }
 
     /**
      * Returns whether a position has balance factor between -1 and 1 inclusive.
      */
     protected boolean isBalanced(Position<Entry<K, V>> p) {
-        // TODO
-        return false;
+        if (p == null || p.getElement() == null) {
+            return true;
+        }
+        int diff = height(left(p)) - height(right(p));
+        return diff >= -1 && diff <= 1;
     }
 
     /**
      * Returns a child of p with height no smaller than that of the other child.
      */
     protected Position<Entry<K, V>> tallerChild(Position<Entry<K, V>> p) {
-        // TODO
-        return null;
+        if (p == null || p.getElement() == null) {
+            return null;
+        }
+        Position<Entry<K, V>> l = left(p);
+        Position<Entry<K, V>> r = right(p);
+        if (height(l) > height(r)) {
+            return l;
+        }
+        if (height(r) > height(l)) {
+            return r;
+        }
+        return l;
+    }
+
+    /**
+     * Walks to the nearest ancestor that holds a map entry (internal node).
+     */
+    private Position<Entry<K, V>> ascendToInternal(Position<Entry<K, V>> p) {
+        while (p != null && p.getElement() == null) {
+            p = parent(p);
+        }
+        return p;
     }
 
     /**
      * Utility used to rebalance after an insert or removal operation. This
-     * traverses the path upward from p, performing a trinode restructuring when
-     * imbalance is found, continuing until balance is restored.
+     * traverses the path upward from p to the root, performing a trinode
+     * restructuring whenever a node is out of AVL balance.
      */
     protected void rebalance(Position<Entry<K, V>> p) {
-        // TODO
+        p = ascendToInternal(p);
+        while (p != null) {
+            recomputeHeight(left(p));
+            recomputeHeight(right(p));
+            if (!isBalanced(p)) {
+                p = restructure(tallerChild(tallerChild(p)));
+                recomputeHeight(left(p));
+                recomputeHeight(right(p));
+            }
+            recomputeHeight(p);
+            p = ascendToInternal(parent(p));
+        }
     }
 
     /**
@@ -80,7 +125,7 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
      */
     @Override
     protected void rebalanceDelete(Position<Entry<K, V>> p) {
-        // TODO
+        rebalance(p);
     }
 
     /**
@@ -107,12 +152,14 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
     }
 
     public static void main(String[] args) {
-        AVLTreeMap avl = new AVLTreeMap<>();
+        AVLTreeMap<Integer, Integer> avl = new AVLTreeMap<>();
 
         Integer[] arr = new Integer[]{5, 3, 10, 2, 4, 7, 11, 1, 6, 9, 12, 8};
 
         for (Integer i : arr) {
-            if (i != null) avl.put(i, i);
+            if (i != null) {
+                avl.put(i, i);
+            }
             System.out.println("root " + avl.root());
         }
         System.out.println(avl.toBinaryTreeString());
