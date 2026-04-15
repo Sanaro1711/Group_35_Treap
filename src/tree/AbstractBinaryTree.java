@@ -88,8 +88,6 @@ public abstract class AbstractBinaryTree<E> extends AbstractTree<E>
         inorderSubtree(left(p), snapshot);
         snapshot.add(p);
         inorderSubtree(right(p), snapshot);
-
-
     }
 
     /**

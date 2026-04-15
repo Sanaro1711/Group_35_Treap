@@ -227,7 +227,7 @@ public class TreeMap<K, V> extends AbstractSortedMap<K, V> {
     }
 
     // Some notational shorthands for brevity (yet not efficiency)
-    protected Position<Entry<K, V>> root() {
+    public Position<Entry<K, V>> root() {
         return tree.root();
     }
 
