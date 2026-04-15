@@ -61,7 +61,7 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
             return true;
         }
         int diff = height(left(p)) - height(right(p));
-        return diff >= -1 && diff <= 1;
+        return (diff >= -1) && (diff <= 1);
     }
 
     /**
@@ -82,15 +82,6 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
         return l;
     }
 
-    /**
-     * Walks to the nearest ancestor that holds a map entry (internal node).
-     */
-    private Position<Entry<K, V>> ascendToInternal(Position<Entry<K, V>> p) {
-        while (p != null && p.getElement() == null) {
-            p = parent(p);
-        }
-        return p;
-    }
 
     /**
      * Utility used to rebalance after an insert or removal operation. This
@@ -98,17 +89,21 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
      * restructuring whenever a node is out of AVL balance.
      */
     protected void rebalance(Position<Entry<K, V>> p) {
-        p = ascendToInternal(p);
-        while (p != null) {
-            recomputeHeight(left(p));
-            recomputeHeight(right(p));
-            if (!isBalanced(p)) {
-                p = restructure(tallerChild(tallerChild(p)));
+        if (isInternal(p)) {
+            recomputeHeight(p);
+        }
+        while (!isRoot(p)) {
+            p = parent(p);
+
+            if (!isBalanced(p)) { // the parent is not balanced, so restructure it
+                Position<Entry<K, V>> gc = tallerChild(tallerChild(p)); // get grandchild - this is for the rotations - this operation is also safe as for a node to be unbalanced, it needs to have at lesast one child with height >= 2 -> so this never fails
+                p = restructure(gc); // rotate it to make it balanced
+
+                // computes new height
                 recomputeHeight(left(p));
                 recomputeHeight(right(p));
+                recomputeHeight(p);
             }
-            recomputeHeight(p);
-            p = ascendToInternal(parent(p));
         }
     }
 
