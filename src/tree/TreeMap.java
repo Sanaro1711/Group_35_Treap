@@ -387,7 +387,8 @@ public class TreeMap<K, V> extends AbstractSortedMap<K, V> {
             p = s;
         }
 
-        Position<Entry<K, V>> sib = sibling(p);
+        // Root has no parent; sibling() would call left(null) and throw.
+        Position<Entry<K, V>> sib = isRoot(p) ? null : sibling(p);
 
         LinkedBinaryTree.Node<Entry<K, V>> node = (LinkedBinaryTree.Node<Entry<K, V>>) p;
         LinkedBinaryTree.Node<Entry<K, V>> parent = node.getParent();

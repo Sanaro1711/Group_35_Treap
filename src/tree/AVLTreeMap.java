@@ -89,6 +89,9 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
      * restructuring whenever a node is out of AVL balance.
      */
     protected void rebalance(Position<Entry<K, V>> p) {
+        if (p == null) {
+            return;
+        }
         if (isInternal(p)) {
             recomputeHeight(p);
         }

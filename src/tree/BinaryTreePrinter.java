@@ -6,6 +6,7 @@ import interfaces.Position;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * A class to print a text representation of a Binary Tree.
@@ -25,9 +26,23 @@ public class BinaryTreePrinter<N> {
     //private int tspace = 1;
 
     private final BinaryTree<N> tree;
+    /** When non-null, used instead of {@link Position#toString()} for node labels. */
+    private final Function<Position<N>, String> labelFn;
 
     public BinaryTreePrinter(BinaryTree<N> tree) {
+        this(tree, null);
+    }
+
+    /**
+     * @param labelFn maps each position to its display label (e.g. key and auxiliary data)
+     */
+    public BinaryTreePrinter(BinaryTree<N> tree, Function<Position<N>, String> labelFn) {
         this.tree = tree;
+        this.labelFn = labelFn;
+    }
+
+    private String label(Position<N> p) {
+        return labelFn != null ? labelFn.apply(p) : p.toString();
     }
 
     public String print() {
@@ -78,7 +93,7 @@ public class BinaryTreePrinter<N> {
             //System.out.println("root: " + Collections.emptyList());
             return Collections.emptyList();
         } else {
-            String rootLabel = root.toString();//getLabel.apply(root);
+            String rootLabel = label(root);
             //System.out.println("rootLabel: " + rootLabel);
 
             //List<TreeLine> leftTreeLines = buildTreeLines(getLeft.apply(root));

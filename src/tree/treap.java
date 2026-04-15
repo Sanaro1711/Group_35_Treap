@@ -1,6 +1,7 @@
+package tree;
+
 import interfaces.Entry;
 import interfaces.Position;
-import tree.BinaryTreePrinter;
 
 import java.util.Comparator;
 import java.util.Random;
@@ -8,12 +9,12 @@ import java.util.Random;
 /**
  * A Treap (tree + heap): BST ordered by key, heap ordered by random priority.
  *
- * Uses the underlying {@link tree.TreeMap} search-tree structure and stores a node's
- * priority in the inherited {@code aux} field (see {@code TreeMap.BalanceableBinaryTree}).
+ * Uses the underlying {@link TreeMap} search-tree structure and stores a node's
+ * priority in the inherited {@code aux} field (see {@link TreeMap.BalanceableBinaryTree}).
  *
  * Heap property used here: parent priority <= child priority (min-heap on priority).
  */
-public class treap<K, V> extends tree.TreeMap<K, V> {
+public class treap<K, V> extends TreeMap<K, V> {
 
     private final Random rnd = new Random();
 
@@ -33,7 +34,9 @@ public class treap<K, V> extends tree.TreeMap<K, V> {
     public String toBinaryTreeString() {
         BinaryTreePrinter<Entry<K, V>> btp = new BinaryTreePrinter<>(this.tree,
             p -> {
-                if (p.getElement() == null) return "∅";
+                if (p.getElement() == null) {
+                    return "\u29B0";
+                }
                 K key = p.getElement().getKey();
                 int pr = tree.getAux(p);
                 return key + "(" + pr + ")";
