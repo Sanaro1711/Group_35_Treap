@@ -12,7 +12,7 @@ import java.util.Random;
  * Uses the underlying {@link TreeMap} search-tree structure and stores a node's
  * priority in the inherited {@code aux} field (see {@link TreeMap.BalanceableBinaryTree}).
  *
- * Heap property used here: parent priority <= child priority (min-heap on priority).
+ * Heap property used here: parent priority is greater than or equal to each child (max-heap on priority).
  */
 public class treap<K, V> extends TreeMap<K, V> {
 
@@ -50,7 +50,7 @@ public class treap<K, V> extends TreeMap<K, V> {
     private int priority(Position<Entry<K, V>> p) {
         // external nodes (null entry) never participate in heap comparisons
         if (p == null || p.getElement() == null) {
-            return Integer.MAX_VALUE;
+            return Integer.MIN_VALUE;
         }
         return tree.getAux(p);
     }
@@ -86,10 +86,10 @@ public class treap<K, V> extends TreeMap<K, V> {
     protected void rebalanceInsert(Position<Entry<K, V>> p) {
         assignPriorityIfNeeded(p);
 
-        // bubble up while heap property is violated
+        // bubble up while heap property is violated (higher priority toward root)
         while (!isRoot(p)) {
             Position<Entry<K, V>> par = parent(p);
-            if (priority(p) < priority(par)) {
+            if (priority(p) > priority(par)) {
                 rotate(p);
             } else {
                 break;
@@ -123,8 +123,8 @@ public class treap<K, V> extends TreeMap<K, V> {
             boolean rInternal = r.getElement() != null;
 
             if (lInternal && rInternal) {
-                // rotate up the child with smaller priority (min-heap)
-                if (priority(l) <= priority(r)) {
+                // rotate up the child with larger priority (max-heap)
+                if (priority(l) >= priority(r)) {
                     rotate(l);
                 } else {
                     rotate(r);

@@ -252,48 +252,77 @@ public final class MeasurePerformance {
         out.println("#   inorder_traversal_ns — iterate entrySet() once (sorted key order)");
         out.println("#   delete_all_ns — remove() each key in random order until empty");
         out.println("#");
+        out.println("# Row order: every row for treap (all n × patterns), then every row for AVLTreeMap,");
+        out.println("# then every row for java.util.TreeMap. Same keys per (size_n, input_pattern) across blocks.");
+        out.println("#");
         out.println("size_n,input_pattern,map_implementation,insert_batch_ns,insert_single_calls_sum_ns,"
                 + "search_successful_ns,search_unsuccessful_ns,inorder_traversal_ns,delete_all_ns");
     }
 
-    private static void runBenchmarkRows(PrintWriter out, Random rng) {
+    /** One benchmark scenario: shared key lists so all map types see identical inputs. */
+    private record BenchCase(
+            int n,
+            InputPattern pattern,
+            List<Integer> keys,
+            List<Integer> searchOrder,
+            List<Integer> deleteOrder,
+            List<Integer> missing) {
+    }
+
+    private static List<BenchCase> buildBenchCases(Random rng) {
+        List<BenchCase> cases = new ArrayList<>();
         for (int n = N_MIN; n <= N_MAX; n += N_STEP) {
             for (InputPattern pattern : InputPattern.values()) {
                 List<Integer> keys = makeKeys(n, pattern, rng);
                 List<Integer> searchOrder = shuffledCopy(keys, rng);
                 List<Integer> deleteOrder = shuffledCopy(keys, rng);
                 List<Integer> missing = absentKeys(n);
-
-                treap<Integer, Integer> treapSingle = new treap<>();
-                treap<Integer, Integer> treapMain = new treap<>();
-                long tInsSingle = measureInsertSingleCalls(treapSingle, keys);
-                long tIns = measureInsert(treapMain, keys);
-                long tHit = measureSearch(treapMain, searchOrder);
-                long tMiss = measureSearch(treapMain, missing);
-                long tWalk = measureInorder(treapMain);
-                long tDel = measureDelete(treapMain, deleteOrder);
-                writeCsvRow(out, n, pattern, "treap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
-
-                AVLTreeMap<Integer, Integer> avlSingle = new AVLTreeMap<>();
-                AVLTreeMap<Integer, Integer> avlMain = new AVLTreeMap<>();
-                tInsSingle = measureInsertSingleCalls(avlSingle, keys);
-                tIns = measureInsert(avlMain, keys);
-                tHit = measureSearch(avlMain, searchOrder);
-                tMiss = measureSearch(avlMain, missing);
-                tWalk = measureInorder(avlMain);
-                tDel = measureDelete(avlMain, deleteOrder);
-                writeCsvRow(out, n, pattern, "AVLTreeMap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
-
-                TreeMap<Integer, Integer> javaSingle = new TreeMap<>();
-                TreeMap<Integer, Integer> javaMain = new TreeMap<>();
-                tInsSingle = measureInsertSingleCalls(javaSingle, keys);
-                tIns = measureInsert(javaMain, keys);
-                tHit = measureSearch(javaMain, searchOrder);
-                tMiss = measureSearch(javaMain, missing);
-                tWalk = measureInorder(javaMain);
-                tDel = measureDelete(javaMain, deleteOrder);
-                writeCsvRow(out, n, pattern, "java.util.TreeMap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
+                cases.add(new BenchCase(n, pattern, keys, searchOrder, deleteOrder, missing));
             }
+        }
+        return cases;
+    }
+
+    private static void runBenchmarkRows(PrintWriter out, Random rng) {
+        List<BenchCase> cases = buildBenchCases(rng);
+
+        out.println("# --- block: treap (all runs) ---");
+        for (BenchCase c : cases) {
+            treap<Integer, Integer> treapSingle = new treap<>();
+            treap<Integer, Integer> treapMain = new treap<>();
+            long tInsSingle = measureInsertSingleCalls(treapSingle, c.keys());
+            long tIns = measureInsert(treapMain, c.keys());
+            long tHit = measureSearch(treapMain, c.searchOrder());
+            long tMiss = measureSearch(treapMain, c.missing());
+            long tWalk = measureInorder(treapMain);
+            long tDel = measureDelete(treapMain, c.deleteOrder());
+            writeCsvRow(out, c.n(), c.pattern(), "treap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
+        }
+
+        out.println("# --- block: AVLTreeMap (all runs) ---");
+        for (BenchCase c : cases) {
+            AVLTreeMap<Integer, Integer> avlSingle = new AVLTreeMap<>();
+            AVLTreeMap<Integer, Integer> avlMain = new AVLTreeMap<>();
+            long tInsSingle = measureInsertSingleCalls(avlSingle, c.keys());
+            long tIns = measureInsert(avlMain, c.keys());
+            long tHit = measureSearch(avlMain, c.searchOrder());
+            long tMiss = measureSearch(avlMain, c.missing());
+            long tWalk = measureInorder(avlMain);
+            long tDel = measureDelete(avlMain, c.deleteOrder());
+            writeCsvRow(out, c.n(), c.pattern(), "AVLTreeMap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
+        }
+
+        out.println("# --- block: java.util.TreeMap (all runs) ---");
+        for (BenchCase c : cases) {
+            TreeMap<Integer, Integer> javaSingle = new TreeMap<>();
+            TreeMap<Integer, Integer> javaMain = new TreeMap<>();
+            long tInsSingle = measureInsertSingleCalls(javaSingle, c.keys());
+            long tIns = measureInsert(javaMain, c.keys());
+            long tHit = measureSearch(javaMain, c.searchOrder());
+            long tMiss = measureSearch(javaMain, c.missing());
+            long tWalk = measureInorder(javaMain);
+            long tDel = measureDelete(javaMain, c.deleteOrder());
+            writeCsvRow(out, c.n(), c.pattern(), "java.util.TreeMap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
         }
     }
 
