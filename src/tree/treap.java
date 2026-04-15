@@ -143,6 +143,29 @@ public class treap<K, V> extends TreeMap<K, V> {
         return super.remove(key);
     }
 
+    /**
+     * Sorts {@code arr} in ascending order using a treap as a multiset: insert keys with
+     * multiplicity, then overwrite {@code arr} from an in-order traversal of entries.
+     */
+    public static void treapSort(Integer[] arr) {
+        if (arr == null || arr.length <= 1) {
+            return;
+        }
+        treap<Integer, Integer> t = new treap<>();
+        for (Integer x : arr) {
+            Integer c = t.get(x);
+            t.put(x, c == null ? 1 : c + 1);
+        }
+        int i = 0;
+        for (Entry<Integer, Integer> e : t.entrySet()) {
+            int key = e.getKey();
+            int cnt = e.getValue();
+            for (int j = 0; j < cnt; j++) {
+                arr[i++] = key;
+            }
+        }
+    }
+
     public static void main(String[] args) {
         treap<Integer, String> map = new treap<>(42L);
 
