@@ -84,29 +84,27 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
 
 
     /**
-     * Utility used to rebalance after an insert or removal operation. This
-     * traverses the path upward from p to the root, performing a trinode
-     * restructuring whenever a node is out of AVL balance.
+     * Walks from {@code p} toward the root, refreshing cached heights at each internal
+     * node before checking AVL balance. Without that, {@code aux} stays stale and
+     * {@link #isBalanced} / {@link #tallerChild} use wrong values (major correctness bug).
      */
     protected void rebalance(Position<Entry<K, V>> p) {
         if (p == null) {
             return;
         }
-        if (isInternal(p)) {
+        while (p != null) {
             recomputeHeight(p);
-        }
-        while (!isRoot(p)) {
-            p = parent(p);
-
-            if (!isBalanced(p)) { // the parent is not balanced, so restructure it
-                Position<Entry<K, V>> gc = tallerChild(tallerChild(p)); // get grandchild - this is for the rotations - this operation is also safe as for a node to be unbalanced, it needs to have at lesast one child with height >= 2 -> so this never fails
-                p = restructure(gc); // rotate it to make it balanced
-
-                // computes new height
+            if (!isBalanced(p)) {
+                Position<Entry<K, V>> gc = tallerChild(tallerChild(p));
+                p = restructure(gc);
                 recomputeHeight(left(p));
                 recomputeHeight(right(p));
                 recomputeHeight(p);
             }
+            if (isRoot(p)) {
+                break;
+            }
+            p = parent(p);
         }
     }
 
@@ -164,6 +162,5 @@ public class  AVLTreeMap<K, V> extends TreeMap<K, V> {
 
         avl.remove(5);
         System.out.println(avl.toBinaryTreeString());
-
     }
 }

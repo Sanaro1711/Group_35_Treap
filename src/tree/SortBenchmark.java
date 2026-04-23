@@ -14,7 +14,7 @@ import java.util.Random;
 import java.util.function.Consumer;
 
 /**
- * Compares {@link treap#treapSort}, heap sort via {@link PriorityQueue}, {@link Arrays#sort} (TimSort),
+ * Compares {@link treap#treapSort}, {@link PriorityQueue} sort, {@link Arrays#sort} (TimSort),
  * and {@link SortingAlgorithms} quick / merge sort. Writes CSV under {@code benchmark_output/sorting/}.
  */
 public final class SortBenchmark {
@@ -24,9 +24,9 @@ public final class SortBenchmark {
     public static final int N_STEP = 100;
     public static final long BENCHMARK_RANDOM_SEED = 42L;
 
+    /** Only random and reverse-sorted inputs (no nearly-sorted). */
     public enum InputPattern {
         RANDOM,
-        NEARLY_SORTED,
         REVERSE_SORTED
     }
 
@@ -41,7 +41,6 @@ public final class SortBenchmark {
     private SortBenchmark() {
     }
 
-    /** {@code benchmark_output/sorting} relative to project root (works if cwd is project root or {@code src}). */
     public static Path sortingOutputDir() {
         Path cwd = Path.of("").toAbsolutePath().normalize();
         if ("src".equals(cwd.getFileName().toString())) {
@@ -62,9 +61,8 @@ public final class SortBenchmark {
         }
     }
 
-    /** Priority-queue sort using {@link java.util.PriorityQueue} (assignment-allowed “PQ sort”). */
     public static void pqSort(Integer[] arr) {
-        PriorityQueue<Integer> pq = new PriorityQueue<>(arr.length);
+        PriorityQueue<Integer> pq = new PriorityQueue<>(arr.length); // we used Java's in-built PQ
         for (Integer x : arr) {
             pq.add(x);
         }
@@ -73,7 +71,6 @@ public final class SortBenchmark {
         }
     }
 
-    /** In-place sort via {@link Arrays#sort(Object[])} (TimSort for {@link Integer}[]). */
     public static void timSort(Integer[] arr) {
         Arrays.sort(arr);
     }
@@ -84,19 +81,6 @@ public final class SortBenchmark {
             case REVERSE_SORTED:
                 for (int i = 0; i < n; i++) {
                     a[i] = n - 1 - i;
-                }
-                break;
-            case NEARLY_SORTED:
-                for (int i = 0; i < n; i++) {
-                    a[i] = i;
-                }
-                int swaps = Math.max(1, n / 50);
-                for (int s = 0; s < swaps; s++) {
-                    int i = rng.nextInt(n);
-                    int j = rng.nextInt(n);
-                    Integer t = a[i];
-                    a[i] = a[j];
-                    a[j] = t;
                 }
                 break;
             case RANDOM:
@@ -118,16 +102,40 @@ public final class SortBenchmark {
         }
     }
 
-    private static long[] timeAndMemoryDelta(Consumer<Integer[]> sort, Integer[] arr) {
+    private static long usedHeapAfterGc() {
         Runtime rt = Runtime.getRuntime();
         rt.gc();
-        long memBefore = rt.totalMemory() - rt.freeMemory();
+        return rt.totalMemory() - rt.freeMemory();
+    }
+
+    /** Time + heap delta (for RANDOM inputs only in the CSV). */
+    private static long[] timeAndMemoryDelta(Consumer<Integer[]> sort, Integer[] arr) {
+        long memBefore = usedHeapAfterGc();
         long t0 = System.nanoTime();
         sort.accept(arr);
         long t1 = System.nanoTime();
-        long memAfter = rt.totalMemory() - rt.freeMemory();
         verifySorted(arr);
+        long memAfter = usedHeapAfterGc();
         return new long[]{t1 - t0, memAfter - memBefore};
+    }
+
+    /** Time only (no extra gc); used for reverse-sorted rows. */
+    private static long timeNanosOnly(Consumer<Integer[]> sort, Integer[] arr) {
+        long t0 = System.nanoTime();
+        sort.accept(arr);
+        long t1 = System.nanoTime();
+        verifySorted(arr);
+        return t1 - t0;
+    }
+
+    private static void warmupSorters() {
+        Random w = new Random(999L);
+        Integer[] warm = generateData(2_000, InputPattern.RANDOM, w);
+        for (String algo : ALGORITHM_ORDER) {
+            Integer[] c = Arrays.copyOf(warm, warm.length);
+            sorterFor(algo).accept(c);
+            verifySorted(c);
+        }
     }
 
     private static Consumer<Integer[]> sorterFor(String algo) {
@@ -148,20 +156,20 @@ public final class SortBenchmark {
     }
 
     private static void writeHeader(PrintWriter out) {
-        out.println("# Sorting benchmark: TreapSort, PQSort (java.util.PriorityQueue), Java TimSort (Arrays.sort),");
-        out.println("# QuickSort, MergeSort (SortingAlgorithms.java).");
+        out.println("# Sorting benchmark: TreapSort, PQSort, Java TimSort, QuickSort, MergeSort.");
+        out.println("# Input patterns: RANDOM, REVERSE_SORTED only.");
         out.println("# Generated local time: " + LocalDateTime.now());
-        out.println("# Input sizes n: " + N_MIN + " .. " + N_MAX + " step " + N_STEP);
-        out.println("# Random seed: " + BENCHMARK_RANDOM_SEED);
-        out.println("# time_ns: wall-clock nanoseconds to sort one copy of the input.");
-        out.println("# memory_delta_bytes: change in JVM *heap used* (after sort - before), after System.gc();");
-        out.println("# Not total OS memory / RSS; very approximate and GC-dependent.");
-        out.println("# Row blocks: all rows for one algorithm, then the next (same input per n+pattern across algorithms).");
+        out.println("# n: " + N_MIN + " .. " + N_MAX + " step " + N_STEP + ", seed " + BENCHMARK_RANDOM_SEED);
+        out.println("# JIT warmup: each sorter on random n=2000 before timed runs.");
+        out.println("# time_ns: wall-clock time to sort one array copy.");
+        out.println("# memory_delta_bytes: only for RANDOM (heap after gc post-sort minus before); -1 = not measured.");
         out.println("#");
         out.println("n,input_pattern,algorithm,time_ns,memory_delta_bytes");
     }
 
     public static void main(String[] args) throws Exception {
+        warmupSorters();
+
         Random rng = new Random(BENCHMARK_RANDOM_SEED);
         List<BenchCase> cases = new ArrayList<>();
         for (int n = N_MIN; n <= N_MAX; n += N_STEP) {
@@ -182,8 +190,13 @@ public final class SortBenchmark {
                 Consumer<Integer[]> sort = sorterFor(algo);
                 for (BenchCase c : cases) {
                     Integer[] copy = Arrays.copyOf(c.data, c.data.length);
-                    long[] tm = timeAndMemoryDelta(sort, copy);
-                    out.printf("%d,%s,%s,%d,%d%n", c.n, c.pattern.name(), algo, tm[0], tm[1]);
+                    if (c.pattern == InputPattern.RANDOM) {
+                        long[] tm = timeAndMemoryDelta(sort, copy);
+                        out.printf("%d,%s,%s,%d,%d%n", c.n, c.pattern.name(), algo, tm[0], tm[1]);
+                    } else {
+                        long t = timeNanosOnly(sort, copy);
+                        out.printf("%d,%s,%s,%d,-1%n", c.n, c.pattern.name(), algo, t);
+                    }
                 }
             }
         }

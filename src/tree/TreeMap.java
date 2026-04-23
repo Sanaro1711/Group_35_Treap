@@ -564,7 +564,13 @@ public class TreeMap<K, V> extends AbstractSortedMap<K, V> {
     }
 
     public String toString() {
-        return tree.toString();
+        ArrayList<V> values = new ArrayList<>(size());
+        for (Position<Entry<K, V>> p : tree.inorder()) {
+            if (p.getElement() != null) {
+                values.add(p.getElement().getValue());
+            }
+        }
+        return values.toString();
     }
 
     /**

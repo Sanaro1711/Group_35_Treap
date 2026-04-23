@@ -3,6 +3,7 @@ package tree;
 import interfaces.Entry;
 import interfaces.Position;
 
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Random;
 
@@ -103,8 +104,7 @@ public class treap<K, V> extends TreeMap<K, V> {
         // Nothing to do here.
     }
 
-    // ----- removal -----
-
+    // ----- removal ----
     @Override
     public V remove(K key) throws IllegalArgumentException {
         checkKey(key);
@@ -176,6 +176,7 @@ public class treap<K, V> extends TreeMap<K, V> {
             System.out.println("put(" + k + ", \"v" + k + "\")");
             System.out.println(map.toBinaryTreeString());
         }
+        System.out.println(map.toBinaryTreeString());
 
         System.out.println("--- gets ---");
         System.out.println("get(40) = " + map.get(40));
@@ -189,5 +190,9 @@ public class treap<K, V> extends TreeMap<K, V> {
         }
 
         System.out.println("final size = " + map.size());
+
+        Integer[] arr = {10, 4, 3, 4, 1};
+        treapSort(arr);
+        System.out.println(Arrays.toString(arr));
     }
 }

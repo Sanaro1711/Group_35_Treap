@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 """
-Plot sort_benchmark_*.csv from benchmark_output/sorting/ → sorting/figures/
+Plot sort_benchmark_*.csv → benchmark_output/sorting/figures/
 
-For each input pattern (including RANDOM):
-  - *_time_ns.png — wall-clock sort time
-  - *_memory_delta_bytes.png — approximate Δ in JVM *heap used* (after sort − before),
- not total RAM; values are noisy (GC, allocator).
-
-Also writes random__combined_time_and_memory.png (two stacked panels, random data only).
+- random__time_ms.png, reverse_sorted__time_ms.png
+- random__memory_delta_bytes.png (single memory chart; RANDOM only; -1 rows ignored)
 
 Usage:
-  python plot_sort_benchmark.py
-  python plot_sort_benchmark.py path/to/sort_benchmark_....csv
+  python plot_sort_benchmark.py [path/to/sort_benchmark_....csv]
 Requires: pip install matplotlib
 """
 from __future__ import annotations
@@ -40,7 +35,7 @@ COLORS = {
     "QuickSort": "#1f77b4",
     "MergeSort": "#d62728",
 }
-PATTERNS = ["RANDOM", "NEARLY_SORTED", "REVERSE_SORTED"]
+TIME_PATTERNS = ["RANDOM", "REVERSE_SORTED"]
 
 
 def find_csv(arg: str | None) -> Path:
@@ -76,7 +71,9 @@ def load_rows(path: Path) -> list[dict]:
     for r in rows:
         r["n"] = int(r["n"])
         r["time_ns"] = int(r["time_ns"])
-        r["memory_delta_bytes"] = int(r["memory_delta_bytes"])
+        r["time_ms"] = r["time_ns"] / 1_000_000.0
+        md = int(r["memory_delta_bytes"])
+        r["memory_delta_bytes"] = md if md >= 0 else None
     return rows
 
 
@@ -116,25 +113,40 @@ def plot_metric(rows: list[dict], pattern: str, metric_key: str, y_label: str, t
     plt.close(fig)
 
 
-def plot_random_combined(rows: list[dict]) -> None:
-    """Single figure: random data — time (top) and JVM heap Δ (bottom)."""
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 7), sharex=True, dpi=120)
-    plot_lines(ax1, rows, "RANDOM", "time_ns")
-    ax1.set_ylabel("Time (ns)")
-    ax1.set_title("Random input — sort time")
-    ax1.legend(framealpha=0.95, fontsize=8)
-
-    plot_lines(ax2, rows, "RANDOM", "memory_delta_bytes")
-    ax2.set_xlabel("n (array length)")
-    ax2.set_ylabel("Δ JVM heap used (bytes)")
-    ax2.set_title(
-        "Random input — approximate heap change (after sort − before; not total RAM)"
+def plot_memory_random_only(rows: list[dict]) -> None:
+    """One chart: RANDOM inputs only, rows with memory measured."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.5), dpi=120)
+    for algo in ALGOS:
+        pts = [
+            r
+            for r in rows
+            if r["input_pattern"] == "RANDOM"
+            and r["algorithm"] == algo
+            and r["memory_delta_bytes"] is not None
+        ]
+        pts.sort(key=lambda r: r["n"])
+        if not pts:
+            continue
+        xs = [r["n"] for r in pts]
+        ys = [r["memory_delta_bytes"] for r in pts]
+        ax.plot(
+            xs,
+            ys,
+            color=COLORS.get(algo, "#333333"),
+            linewidth=2,
+            marker="o",
+            markersize=3,
+            label=algo,
+        )
+    ax.set_xlabel("n (array length)")
+    ax.set_ylabel("Δ JVM heap used (bytes)")
+    ax.set_title(
+        "Random input — approximate heap change\n(after gc post-sort minus before gc pre-sort)"
     )
-    ax2.legend(framealpha=0.95, fontsize=8)
-    fig.suptitle("Sorting benchmark: random data", fontsize=12, y=1.01)
+    ax.legend(framealpha=0.95, fontsize=8)
     fig.tight_layout()
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURES_DIR / "random__combined_time_and_memory.png", dpi=160, bbox_inches="tight")
+    fig.savefig(FIGURES_DIR / "random__memory_delta_bytes.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -150,28 +162,23 @@ def main() -> None:
         except (OSError, ValueError):
             plt.rcParams.update({"axes.grid": True, "grid.alpha": 0.35})
 
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    for old in FIGURES_DIR.glob("*.png"):
+        old.unlink()
+
     nfig = 0
-    for pattern in PATTERNS:
+    for pattern in TIME_PATTERNS:
         plot_metric(
             rows,
             pattern,
-            "time_ns",
-            "Time (ns)",
+            "time_ms",
+            "Time (ms)",
             f"Sort time — {pattern_title(pattern)} input",
-            f"{pattern.lower()}__time_ns.png",
-        )
-        nfig += 1
-        plot_metric(
-            rows,
-            pattern,
-            "memory_delta_bytes",
-            "Δ JVM heap used (bytes)",
-            f"Approx. JVM heap change — {pattern_title(pattern)}\n(after sort − before; noisy, not OS RSS)",
-            f"{pattern.lower()}__memory_delta_bytes.png",
+            f"{pattern.lower()}__time_ms.png",
         )
         nfig += 1
 
-    plot_random_combined(rows)
+    plot_memory_random_only(rows)
     nfig += 1
 
     print(f"CSV: {csv_path}")

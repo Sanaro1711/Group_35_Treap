@@ -64,6 +64,7 @@ public abstract class AbstractBinaryTree<E> extends AbstractTree<E>
      * @return iterable collection of the Positions of p's children
      * @throws IllegalArgumentException if p is not a valid Position for this tree.
      */
+
     @Override
     public Iterable<Position<E>> children(Position<E> p) {
         List<Position<E>> snapshot = new ArrayList<>(2);    // max capacity of 2
@@ -81,6 +82,7 @@ public abstract class AbstractBinaryTree<E> extends AbstractTree<E>
      * @param p        Position serving as the root of a subtree
      * @param snapshot a list to which results are appended
      */
+
     private void inorderSubtree(Position<E> p, List<Position<E>> snapshot) {
         if (p == null) {
             return ;
