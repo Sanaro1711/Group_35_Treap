@@ -100,8 +100,7 @@ public class treap<K, V> extends TreeMap<K, V> {
 
     @Override
     protected void rebalanceDelete(Position<Entry<K, V>> p) {
-        // Treap deletion is handled explicitly in remove(key) by rotating the target down.
-        // Nothing to do here.
+        // no-op: treap deletion handled in remove(key) by rotating target down
     }
 
     // ----- removal ----
@@ -113,8 +112,7 @@ public class treap<K, V> extends TreeMap<K, V> {
             return null;
         }
 
-        // Rotate the target node down until it becomes a (BST) leaf (both children external).
-        // This guarantees that splicing it out cannot violate the heap-order with its parent.
+        // Rotate the target node down until it becomes a leaf (both children external).
         while (left(p).getElement() != null || right(p).getElement() != null) {
             Position<Entry<K, V>> l = left(p);
             Position<Entry<K, V>> r = right(p);
@@ -122,24 +120,16 @@ public class treap<K, V> extends TreeMap<K, V> {
             boolean lInternal = l.getElement() != null;
             boolean rInternal = r.getElement() != null;
 
+            // Rotate up the child with larger priority (max-heap)
             if (lInternal && rInternal) {
-                // rotate up the child with larger priority (max-heap)
-                if (priority(l) >= priority(r)) {
-                    rotate(l);
-                } else {
-                    rotate(r);
-                }
+                rotate(priority(l) >= priority(r) ? l : r);
             } else if (lInternal) {
                 rotate(l);
-            } else if (rInternal) {
+            } else { // rInternal must be true
                 rotate(r);
-            } else {
-                break; // both external
             }
         }
 
-        // Delegate the actual splice (and node-count maintenance) to TreeMap's remove,
-        // which runs inside the correct package to access the underlying tree internals.
         return super.remove(key);
     }
 

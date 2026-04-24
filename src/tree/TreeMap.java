@@ -226,6 +226,41 @@ public class TreeMap<K, V> extends AbstractSortedMap<K, V> {
         tree.addRight(p, null);
     }
 
+    /**
+     * Removes an external (sentinel) position and its parent, promoting the sibling.
+     * Returns the position of the sibling that was promoted.
+     */
+    private Position<Entry<K, V>> removeExternal(Position<Entry<K, V>> p) {
+        if (p == null) {
+            throw new IllegalArgumentException("Position must be non-null");
+        }
+        if (p.getElement() != null) {
+            throw new IllegalArgumentException("Position must be external");
+        }
+
+        Position<Entry<K, V>> parent = parent(p);
+        Position<Entry<K, V>> sib = sibling(p);
+        Position<Entry<K, V>> grand = (parent == null) ? null : parent(parent);
+
+        LinkedBinaryTree.Node<Entry<K, V>> sibNode = (LinkedBinaryTree.Node<Entry<K, V>>) sib;
+        LinkedBinaryTree.Node<Entry<K, V>> grandNode = (LinkedBinaryTree.Node<Entry<K, V>>) grand;
+        LinkedBinaryTree.Node<Entry<K, V>> parentNode = (LinkedBinaryTree.Node<Entry<K, V>>) parent;
+
+        if (grandNode == null) {
+            tree.root = sibNode;
+            sibNode.setParent(null);
+        } else if (grandNode.getLeft() == parentNode) {
+            grandNode.setLeft(sibNode);
+            sibNode.setParent(grandNode);
+        } else {
+            grandNode.setRight(sibNode);
+            sibNode.setParent(grandNode);
+        }
+
+        tree.size -= 2;
+        return sib;
+    }
+
     // Some notational shorthands for brevity (yet not efficiency)
     public Position<Entry<K, V>> root() {
         return tree.root();
@@ -372,6 +407,8 @@ public class TreeMap<K, V> extends AbstractSortedMap<K, V> {
      * @return the previous value associated with the removed key, or null if no
      * such entry exists
      */
+
+    // code taken from textbook
     @Override
     public V remove(K key) throws IllegalArgumentException {
         Position<Entry<K, V>> p = treeSearch(root(), key);
@@ -387,35 +424,16 @@ public class TreeMap<K, V> extends AbstractSortedMap<K, V> {
             p = s;
         }
 
-        // Root has no parent; sibling() would call left(null) and throw.
-        Position<Entry<K, V>> sib = isRoot(p) ? null : sibling(p);
-
-        LinkedBinaryTree.Node<Entry<K, V>> node = (LinkedBinaryTree.Node<Entry<K, V>>) p;
-        LinkedBinaryTree.Node<Entry<K, V>> parent = node.getParent();
-        LinkedBinaryTree.Node<Entry<K, V>> leftChild = node.getLeft();
-        LinkedBinaryTree.Node<Entry<K, V>> rightChild = node.getRight();
-
-        LinkedBinaryTree.Node<Entry<K, V>> hang; // find out which child this element can have
-        if (leftChild.getElement() != null) {
-            hang = leftChild;
-        } else if (rightChild.getElement() != null) {
-            hang = rightChild;
-        } else { // has no children, so set our value to remove as null
-            hang = leftChild;
-        }
-
-        if (parent == null) { // if element being removed is root
-            tree.root = hang;
-        } else if (parent.getLeft() == node) {
-            parent.setLeft(hang);
+        Position<Entry<K, V>> leaf;
+        if (left(p).getElement() == null) {
+            leaf = left(p);
         } else {
-            parent.setRight(hang);
+            leaf = right(p);
         }
-        hang.setParent(parent);
 
-
-        tree.size -= 2;
-        rebalanceDelete(sib);
+        Position<Entry<K, V>> actionPos = sibling(leaf);
+        removeExternal(leaf);
+        rebalanceDelete(actionPos);
         return oldVal;
     }
 
