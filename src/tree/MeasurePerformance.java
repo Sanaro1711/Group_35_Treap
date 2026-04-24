@@ -1,334 +1,284 @@
 package tree;
 
+import CsvGeneration.ArraySlicer;
+import CsvGeneration.CsvReader;
 import interfaces.Entry;
-import interfaces.Map;
 
-import java.io.PrintWriter;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.io.File;
+import java.io.FileWriter;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
-import java.util.TreeMap;
 
-/**
- * Simple timing helpers (nanoseconds). Build a map, then call the measure methods you need.
- */
 public final class MeasurePerformance {
+    private static final String[] MAPS = { "Treap", "AVLTreeMap", "JavaTreeMap" };
 
-    public static final int N_MIN = 100;
-    public static final int N_MAX = 10_000;
-    public static final int N_STEP = 100;
-
-    /** Used for {@link #makeKeys} / shuffles so runs are reproducible. */
-    public static final long BENCHMARK_RANDOM_SEED = 42L;
-
-    /** Default folder (under the JVM working directory) for benchmark CSV output. */
-    public static final String DEFAULT_OUTPUT_DIR = "benchmark_output";
-
-    public enum InputPattern {
-        RANDOM,
-        ASCENDING,
-        DESCENDING,
-        PARTIALLY_SORTED
-    }
-
-    private static volatile long blackhole;
-
-    private MeasurePerformance() {
-    }
-
-    // ----- project maps (interfaces.Map) -----
-
-    public static long measureInsert(Map<Integer, Integer> map, List<Integer> keys) {
-        long start = System.nanoTime();
-        for (Integer key : keys) {
-            map.put(key, key);
-        }
-        return System.nanoTime() - start;
-    }
-
-    /** One timer per put; returns total nanoseconds (rough “single insert” cost summed). */
-    public static long measureInsertSingleCalls(Map<Integer, Integer> map, List<Integer> keys) {
-        long total = 0;
-        for (Integer key : keys) {
-            long t0 = System.nanoTime();
-            map.put(key, key);
-            total += System.nanoTime() - t0;
-        }
-        return total;
-    }
-
-    public static long measureSearch(Map<Integer, Integer> map, List<Integer> keys) {
-        long start = System.nanoTime();
-        for (Integer key : keys) {
-            map.get(key);
-        }
-        return System.nanoTime() - start;
-    }
-
-    public static long measureDelete(Map<Integer, Integer> map, List<Integer> keys) {
-        long start = System.nanoTime();
-        for (Integer key : keys) {
-            map.remove(key);
-        }
-        return System.nanoTime() - start;
-    }
-
-    public static long measureInorder(Map<Integer, Integer> map) {
-        long acc = 0;
-        long start = System.nanoTime();
-        for (Entry<Integer, Integer> e : map.entrySet()) {
-            acc += e.getKey() + e.getValue();
-        }
-        blackhole = acc;
-        return System.nanoTime() - start;
-    }
-
-    // ----- java.util.TreeMap -----
-
-    public static long measureInsert(TreeMap<Integer, Integer> map, List<Integer> keys) {
-        long start = System.nanoTime();
-        for (Integer key : keys) {
-            map.put(key, key);
-        }
-        return System.nanoTime() - start;
-    }
-
-    public static long measureInsertSingleCalls(TreeMap<Integer, Integer> map, List<Integer> keys) {
-        long total = 0;
-        for (Integer key : keys) {
-            long t0 = System.nanoTime();
-            map.put(key, key);
-            total += System.nanoTime() - t0;
-        }
-        return total;
-    }
-
-    public static long measureSearch(TreeMap<Integer, Integer> map, List<Integer> keys) {
-        long start = System.nanoTime();
-        for (Integer key : keys) {
-            map.get(key);
-        }
-        return System.nanoTime() - start;
-    }
-
-    public static long measureDelete(TreeMap<Integer, Integer> map, List<Integer> keys) {
-        long start = System.nanoTime();
-        for (Integer key : keys) {
-            map.remove(key);
-        }
-        return System.nanoTime() - start;
-    }
-
-    public static long measureInorder(TreeMap<Integer, Integer> map) {
-        long acc = 0;
-        long start = System.nanoTime();
-        for (var e : map.entrySet()) {
-            acc += e.getKey() + e.getValue();
-        }
-        blackhole = acc;
-        return System.nanoTime() - start;
-    }
-
-    // ----- test data -----
-
-    public static List<Integer> makeKeys(int n, InputPattern pattern, Random rng) {
-        List<Integer> keys = new ArrayList<>(n);
-        switch (pattern) {
-            case ASCENDING:
-                for (int i = 0; i < n; i++) {
-                    keys.add(i);
-                }
-                break;
-            case DESCENDING:
-                for (int i = 0; i < n; i++) {
-                    keys.add(n - 1 - i);
-                }
-                break;
-            case PARTIALLY_SORTED:
-                for (int i = 0; i < n; i++) {
-                    keys.add(i);
-                }
-                for (int s = 0, swaps = Math.max(1, n / 10); s < swaps; s++) {
-                    swap(keys, rng.nextInt(n), rng.nextInt(n));
-                }
-                break;
-            case RANDOM:
-            default:
-                HashSet<Integer> seen = new HashSet<>(n * 2);
-                int span = Math.max(n * 10, 1);
-                while (keys.size() < n) {
-                    int v = rng.nextInt(span);
-                    if (seen.add(v)) {
-                        keys.add(v);
-                    }
-                }
-                break;
-        }
+    // absent keys are guaranteed not to be in any of the CSVs since values are 10000 or less
+    private static Integer[] absentKeys(int n) {
+        Integer[] keys = new Integer[n];
+        for (int i = 0; i < n; i++) keys[i] = 100000 + i;
         return keys;
     }
 
-    public static List<Integer> absentKeys(int n) {
-        List<Integer> m = new ArrayList<>(n);
-        int base = n * 10_000;
-        for (int i = 0; i < n; i++) {
-            m.add(base + i);
+    // ----- measure helpers -----
+
+    private static long insertBatch(interfaces.Map<Integer, Integer> map, Integer[] keys) {
+        long time = System.nanoTime();
+        for (Integer k : keys) {
+            map.put(k, k);
         }
-        return m;
+        return System.nanoTime() - time;
     }
 
-    public static List<Integer> shuffledCopy(List<Integer> keys, Random rng) {
-        List<Integer> c = new ArrayList<>(keys);
-        for (int i = c.size() - 1; i > 0; i--) {
-            int j = rng.nextInt(i + 1);
-            swap(c, i, j);
+    private static long insertSingle(interfaces.Map<Integer, Integer> map, Integer[] keys) {
+        long total = 0;
+        for (Integer k : keys) {
+            long time = System.nanoTime();
+            map.put(k, k);
+            total += System.nanoTime() - time;
         }
-        return c;
+        return total;
     }
 
-    private static void swap(List<Integer> list, int i, int j) {
-        Integer t = list.get(i);
-        list.set(i, list.get(j));
-        list.set(j, t);
+    private static long searchHit(interfaces.Map<Integer, Integer> map, Integer[] keys) {
+        long time = System.nanoTime();
+        for (Integer k : keys) {
+            map.get(k);
+        }
+        return System.nanoTime() - time;
     }
 
-    public static double toMillis(long nanos) {
-        return nanos / 1_000_000.0;
+    private static long searchMiss(interfaces.Map<Integer, Integer> map, int n) {
+        Integer[] absent = absentKeys(n);
+        long time = System.nanoTime();
+        for (Integer k : absent) {
+            map.get(k);
+        }
+        return System.nanoTime() - time;
     }
 
-    /**
-     * Runs the full benchmark and writes a comma-separated file with a comment header
-     * describing columns and parameters.
-     *
-     * @param args optional: output CSV path; if omitted, writes under {@value #DEFAULT_OUTPUT_DIR}
-     *             as {@code tree_map_benchmark_<timestamp>.csv} (relative to the working directory).
-     */
+    private static long delete(interfaces.Map<Integer, Integer> map, Integer[] keys) {
+        long time = System.nanoTime();
+        for (Integer k : keys) {
+            map.remove(k);
+        }
+        return System.nanoTime() - time;
+    }
+
+    private static long inorder(interfaces.Map<Integer, Integer> map) {
+        long time = System.nanoTime();
+        for (Entry<Integer, Integer> e : map.entrySet()) {
+            int ignored = e.getKey();
+        }
+        return System.nanoTime() - time;
+    }
+
+    // java.util.TreeMap overloads
+
+    private static long insertBatch(java.util.TreeMap<Integer, Integer> map, Integer[] keys) {
+        long time = System.nanoTime();
+        for (Integer k : keys) {
+            map.put(k, k);
+        }
+        return System.nanoTime() - time;
+    }
+
+    private static long insertSingle(java.util.TreeMap<Integer, Integer> map, Integer[] keys) {
+        long total = 0;
+        for (Integer k : keys) {
+            long time = System.nanoTime();
+            map.put(k, k);
+            total += System.nanoTime() - time;
+        }
+        return total;
+    }
+
+    private static long searchHit(java.util.TreeMap<Integer, Integer> map, Integer[] keys) {
+        long time = System.nanoTime();
+        for (Integer k : keys) {
+            map.get(k);
+        }
+        return System.nanoTime() - time;
+    }
+
+    private static long searchMiss(java.util.TreeMap<Integer, Integer> map, int n) {
+        Integer[] absent = absentKeys(n);
+        long time = System.nanoTime();
+        for (Integer k : absent) {
+            map.get(k);
+        }
+        return System.nanoTime() - time;
+    }
+
+    private static long delete(java.util.TreeMap<Integer, Integer> map, Integer[] keys) {
+        long time = System.nanoTime();
+        for (Integer k : keys) {
+            map.remove(k);
+        }
+        return System.nanoTime() - time;
+    }
+
+    private static long inorder(java.util.TreeMap<Integer, Integer> map) {
+        long time = System.nanoTime();
+        for (var e : map.entrySet()) {
+            int ignored = e.getKey();
+        }
+        return System.nanoTime() - time;
+    }
+
+    // one map run for each size of n
+    private static void runProjectMap(FileWriter writer, int[] random, int[] sorted,
+                                      int[] reverse, int[] nearly, String mapName) throws Exception {
+
+        for (int n = 100; n <= 10000; n += 100) {
+            Integer[] rand  = ArraySlicer.slice(random,  n);
+            Integer[] sortd  = ArraySlicer.slice(sorted,  n);
+            Integer[] rev  = ArraySlicer.slice(reverse, n);
+            Integer[] near = ArraySlicer.slice(nearly,  n);
+
+            interfaces.Map<Integer,Integer> m1 = newProjectMap(mapName);
+            interfaces.Map<Integer,Integer> m2 = newProjectMap(mapName);
+            interfaces.Map<Integer,Integer> m3 = newProjectMap(mapName);
+            interfaces.Map<Integer,Integer> m4 = newProjectMap(mapName);
+
+            long randIns  = insertBatch(m1, rand);
+            long sortdIns  = insertBatch(m2, sortd);
+            long revIns  = insertBatch(m3, rev);
+            long nearIns = insertBatch(m4, near);
+
+            interfaces.Map<Integer,Integer> s1 = newProjectMap(mapName);
+            interfaces.Map<Integer,Integer> s2 = newProjectMap(mapName);
+            interfaces.Map<Integer,Integer> s3 = newProjectMap(mapName);
+            interfaces.Map<Integer,Integer> s4 = newProjectMap(mapName);
+            long randInsSingle  = insertSingle(s1, rand);
+            long sortdInsSingle  = insertSingle(s2, sortd);
+            long revInsSingle  = insertSingle(s3, rev);
+            long nearInsSingle = insertSingle(s4, near);
+
+            long randHit  = searchHit(m1, rand);
+            long sortdHit  = searchHit(m2, sortd);
+            long revHit  = searchHit(m3, rev);
+            long nearHit = searchHit(m4, near);
+
+            long randMiss  = searchMiss(m1, n);
+            long sortdMiss  = searchMiss(m2, n);
+            long revMiss  = searchMiss(m3, n);
+            long nearMiss = searchMiss(m4, n);
+
+            long randInord  = inorder(m1);
+            long sortdInord  = inorder(m2);
+            long revInord  = inorder(m3);
+            long nearInord = inorder(m4);
+
+            long randDel  = delete(m1, rand);
+            long sortdDel  = delete(m2, sortd);
+            long revDel  = delete(m3, rev);
+            long nearDel = delete(m4, near);
+
+            writer.write(n + ","
+                    + randIns  + "," + sortdIns  + "," + nearIns  + "," + revIns  + ","
+                    + randInsSingle + "," + sortdInsSingle + "," + nearInsSingle + "," + revInsSingle + ","
+                    + randHit  + "," + sortdHit  + "," + nearHit  + "," + revHit  + ","
+                    + randMiss + "," + sortdMiss + "," + nearMiss + "," + revMiss + ","
+                    + randInord + "," + sortdInord + "," + nearInord + "," + revInord + ","
+                    + randDel  + "," + sortdDel  + "," + nearDel  + "," + revDel
+                    + "\n");
+        }
+    }
+
+    private static void runJavaTreeMap(FileWriter writer, int[] random, int[] sorted,
+                                       int[] reverse, int[] nearly) throws Exception {
+
+        for (int n = 100; n <= 10000; n += 100) {
+            Integer[] rand  = ArraySlicer.slice(random,  n);
+            Integer[] sortd  = ArraySlicer.slice(sorted,  n);
+            Integer[] rev  = ArraySlicer.slice(reverse, n);
+            Integer[] near = ArraySlicer.slice(nearly,  n);
+
+            java.util.TreeMap<Integer,Integer> m1 = new java.util.TreeMap<>();
+            java.util.TreeMap<Integer,Integer> m2 = new java.util.TreeMap<>();
+            java.util.TreeMap<Integer,Integer> m3 = new java.util.TreeMap<>();
+            java.util.TreeMap<Integer,Integer> m4 = new java.util.TreeMap<>();
+
+            long randIns  = insertBatch(m1, rand);
+            long sortdIns  = insertBatch(m2, sortd);
+            long revIns  = insertBatch(m3, rev);
+            long nearIns = insertBatch(m4, near);
+
+            java.util.TreeMap<Integer,Integer> s1 = new java.util.TreeMap<>();
+            java.util.TreeMap<Integer,Integer> s2 = new java.util.TreeMap<>();
+            java.util.TreeMap<Integer,Integer> s3 = new java.util.TreeMap<>();
+            java.util.TreeMap<Integer,Integer> s4 = new java.util.TreeMap<>();
+
+            long randInsSingle  = insertSingle(s1, rand);
+            long sortdInsSingle  = insertSingle(s2, sortd);
+            long revInsSingle  = insertSingle(s3, rev);
+            long nearInsSingle = insertSingle(s4, near);
+
+            long randHit  = searchHit(m1, rand);
+            long sortdHit  = searchHit(m2, sortd);
+            long revHit  = searchHit(m3, rev);
+            long nearHit = searchHit(m4, near);
+
+            long randMiss  = searchMiss(m1, n);
+            long sortdMiss  = searchMiss(m2, n);
+            long revMiss  = searchMiss(m3, n);
+            long nearMiss = searchMiss(m4, n);
+
+            long randInord  = inorder(m1);
+            long sortdInord  = inorder(m2);
+            long revInord  = inorder(m3);
+            long nearInord = inorder(m4);
+
+            long randDel  = delete(m1, rand);
+            long sortdDel  = delete(m2, sortd);
+            long revDel  = delete(m3, rev);
+            long nearDel = delete(m4, near);
+
+            writer.write(n + ","
+                    + randIns  + "," + sortdIns  + "," + nearIns  + "," + revIns  + ","
+                    + randInsSingle + "," + sortdInsSingle + "," + nearInsSingle + "," + revInsSingle + ","
+                    + randHit  + "," + sortdHit  + "," + nearHit  + "," + revHit  + ","
+                    + randMiss + "," + sortdMiss + "," + nearMiss + "," + revMiss + ","
+                    + randInord + "," + sortdInord + "," + nearInord + "," + revInord + ","
+                    + randDel  + "," + sortdDel  + "," + nearDel  + "," + revDel
+                    + "\n");
+        }
+    }
+
+    private static interfaces.Map<Integer, Integer> newProjectMap(String name) {
+        switch (name) {
+            case "Treap":      return new treap<>();
+            case "AVLTreeMap": return new AVLTreeMap<>();
+            default:           throw new IllegalArgumentException(name);
+        }
+    }
+
+    private static final String HEADER =
+            "input_size," +
+                    "random_insert_batch,sorted_insert_batch,nearly_sorted_insert_batch,reverse_insert_batch," +
+                    "random_insert_single,sorted_insert_single,nearly_sorted_insert_single,reverse_insert_single," +
+                    "random_search_hit,sorted_search_hit,nearly_sorted_search_hit,reverse_search_hit," +
+                    "random_search_miss,sorted_search_miss,nearly_sorted_search_miss,reverse_search_miss," +
+                    "random_inorder,sorted_inorder,nearly_sorted_inorder,reverse_inorder," +
+                    "random_delete,sorted_delete,nearly_sorted_delete,reverse_delete\n";
+
     public static void main(String[] args) throws Exception {
-        Path csvPath = resolveOutputPath(args);
-        Path parent = csvPath.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
+        CsvReader reader = new CsvReader();
+        int[] random  = reader.readCsv("src/CsvGeneration/random.csv");
+        int[] sorted  = reader.readCsv("src/CsvGeneration/sorted.csv");
+        int[] reverse = reader.readCsv("src/CsvGeneration/reverse_sorted.csv");
+        int[] nearly  = reader.readCsv("src/CsvGeneration/nearly_sorted.csv");
 
-        Random rng = new Random(BENCHMARK_RANDOM_SEED);
-        try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(csvPath, StandardCharsets.UTF_8))) {
-            writeCsvHeader(out);
-            runBenchmarkRows(out, rng);
-            out.println("# jit_blackhole_accumulator_do_not_use," + blackhole);
-        }
-
-        System.out.println("Benchmark CSV written to: " + csvPath.toAbsolutePath().normalize());
-    }
-
-    private static Path resolveOutputPath(String[] args) {
-        if (args != null && args.length > 0 && !args[0].isBlank()) {
-            return Path.of(args[0].trim());
-        }
-        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss"));
-        return Path.of(DEFAULT_OUTPUT_DIR, "tree_map_benchmark_" + stamp + ".csv");
-    }
-
-    private static void writeCsvHeader(PrintWriter out) {
-        out.println("# Tree map performance comparison (course benchmark)");
-        out.println("# Maps compared: treap (this project), AVLTreeMap (this project), java.util.TreeMap");
-        out.println("# Generated local time: " + LocalDateTime.now());
-        out.println("# Input sizes n: from " + N_MIN + " to " + N_MAX + " inclusive, step " + N_STEP);
-        out.println("# Random seed (keys + shuffle orders): " + BENCHMARK_RANDOM_SEED);
-        out.println("# Units: all timing columns are nanoseconds (ns)");
-        out.println("#");
-        out.println("# Column definitions:");
-        out.println("#   size_n — number of keys inserted / searched / deleted in that row");
-        out.println("#   input_pattern — RANDOM | ASCENDING | DESCENDING | PARTIALLY_SORTED");
-        out.println("#   map_implementation — which map was timed");
-        out.println("#   insert_batch_ns — one timer around all put() calls on an empty map");
-        out.println("#   insert_single_calls_sum_ns — sum of per-put timers on a separate empty map");
-        out.println("#   search_successful_ns — get() for each key in random order (all exist)");
-        out.println("#   search_unsuccessful_ns — get() for keys guaranteed absent from the map");
-        out.println("#   inorder_traversal_ns — iterate entrySet() once (sorted key order)");
-        out.println("#   delete_all_ns — remove() each key in random order until empty");
-        out.println("#");
-        out.println("# Row order: every row for treap (all n × patterns), then every row for AVLTreeMap,");
-        out.println("# then every row for java.util.TreeMap. Same keys per (size_n, input_pattern) across blocks.");
-        out.println("#");
-        out.println("size_n,input_pattern,map_implementation,insert_batch_ns,insert_single_calls_sum_ns,"
-                + "search_successful_ns,search_unsuccessful_ns,inorder_traversal_ns,delete_all_ns");
-    }
-
-    /** One benchmark scenario: shared key lists so all map types see identical inputs. */
-    private record BenchCase(
-            int n,
-            InputPattern pattern,
-            List<Integer> keys,
-            List<Integer> searchOrder,
-            List<Integer> deleteOrder,
-            List<Integer> missing) {
-    }
-
-    private static List<BenchCase> buildBenchCases(Random rng) {
-        List<BenchCase> cases = new ArrayList<>();
-        for (int n = N_MIN; n <= N_MAX; n += N_STEP) {
-            for (InputPattern pattern : InputPattern.values()) {
-                List<Integer> keys = makeKeys(n, pattern, rng);
-                List<Integer> searchOrder = shuffledCopy(keys, rng);
-                List<Integer> deleteOrder = shuffledCopy(keys, rng);
-                List<Integer> missing = absentKeys(n);
-                cases.add(new BenchCase(n, pattern, keys, searchOrder, deleteOrder, missing));
+        for (String map : MAPS) {
+            new File("src/benchmark_output").mkdirs();
+            FileWriter writer = new FileWriter(new File("src/benchmark_output/" + map + ".csv"));
+            writer.write(HEADER);
+            if (map.equals("JavaTreeMap")) {
+                runJavaTreeMap(writer, random, sorted, reverse, nearly);
+            } else {
+                runProjectMap(writer, random, sorted, reverse, nearly, map);
             }
+            writer.close();
         }
-        return cases;
-    }
-
-    private static void runBenchmarkRows(PrintWriter out, Random rng) {
-        List<BenchCase> cases = buildBenchCases(rng);
-
-        out.println("# --- block: treap (all runs) ---");
-        for (BenchCase c : cases) {
-            treap<Integer, Integer> treapSingle = new treap<>();
-            treap<Integer, Integer> treapMain = new treap<>();
-            long tInsSingle = measureInsertSingleCalls(treapSingle, c.keys());
-            long tIns = measureInsert(treapMain, c.keys());
-            long tHit = measureSearch(treapMain, c.searchOrder());
-            long tMiss = measureSearch(treapMain, c.missing());
-            long tWalk = measureInorder(treapMain);
-            long tDel = measureDelete(treapMain, c.deleteOrder());
-            writeCsvRow(out, c.n(), c.pattern(), "treap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
-        }
-
-        out.println("# --- block: AVLTreeMap (all runs) ---");
-        for (BenchCase c : cases) {
-            AVLTreeMap<Integer, Integer> avlSingle = new AVLTreeMap<>();
-            AVLTreeMap<Integer, Integer> avlMain = new AVLTreeMap<>();
-            long tInsSingle = measureInsertSingleCalls(avlSingle, c.keys());
-            long tIns = measureInsert(avlMain, c.keys());
-            long tHit = measureSearch(avlMain, c.searchOrder());
-            long tMiss = measureSearch(avlMain, c.missing());
-            long tWalk = measureInorder(avlMain);
-            long tDel = measureDelete(avlMain, c.deleteOrder());
-            writeCsvRow(out, c.n(), c.pattern(), "AVLTreeMap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
-        }
-
-        out.println("# --- block: java.util.TreeMap (all runs) ---");
-        for (BenchCase c : cases) {
-            TreeMap<Integer, Integer> javaSingle = new TreeMap<>();
-            TreeMap<Integer, Integer> javaMain = new TreeMap<>();
-            long tInsSingle = measureInsertSingleCalls(javaSingle, c.keys());
-            long tIns = measureInsert(javaMain, c.keys());
-            long tHit = measureSearch(javaMain, c.searchOrder());
-            long tMiss = measureSearch(javaMain, c.missing());
-            long tWalk = measureInorder(javaMain);
-            long tDel = measureDelete(javaMain, c.deleteOrder());
-            writeCsvRow(out, c.n(), c.pattern(), "java.util.TreeMap", tIns, tInsSingle, tHit, tMiss, tWalk, tDel);
-        }
-    }
-
-    private static void writeCsvRow(PrintWriter out, int n, InputPattern pattern, String mapName,
-            long ins, long insSingle, long hit, long miss, long walk, long del) {
-        out.printf("%d,%s,%s,%d,%d,%d,%d,%d,%d%n",
-                n, pattern.name(), mapName, ins, insSingle, hit, miss, walk, del);
     }
 }

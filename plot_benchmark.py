@@ -1,147 +1,79 @@
-#!/usr/bin/env python3
-"""
-Read tree_map_benchmark_*.csv from benchmark_output/ and save line plots:
-  one PNG per (metric × input_pattern), three lines (Treap, AVL, Java TreeMap).
-
-Usage:
-  python plot_benchmark.py
-  python plot_benchmark.py benchmark_output/tree_map_benchmark_2026-04-15_232243.csv
-Requires: pip install matplotlib
-"""
-from __future__ import annotations
-
 import csv
-import sys
 from pathlib import Path
-
 import matplotlib.pyplot as plt
 
-ROOT = Path(__file__).resolve().parent
-BENCHMARK_DIR = ROOT / "benchmark_output"
-OUT_DIR = BENCHMARK_DIR / "figures"
+BENCHMARK_DIR = Path("src/benchmark_output")
+FIGURES_DIR   = Path("src/benchmark_output/figures")
 
-MAP_ORDER = ["treap", "AVLTreeMap", "java.util.TreeMap"]
-MAP_LABEL = {
-    "treap": "Treap",
-    "AVLTreeMap": "AVL",
-    "java.util.TreeMap": "Java TreeMap",
-}
+MAPS = ["Treap", "AVLTreeMap", "JavaTreeMap"]
 COLORS = {
-    "treap": "#2ca02c",
-    "AVLTreeMap": "#1f77b4",
-    "java.util.TreeMap": "#ff7f0e",
+    "Treap":       "#2ca02c",
+    "AVLTreeMap":  "#1f77b4",
+    "JavaTreeMap": "#ff7f0e",
 }
 
-METRICS = [
-    ("insert_batch_ns", "Insert (batch)", "Time (ns)"),
-    ("insert_single_calls_sum_ns", "Insert (single, summed)", "Time (ns)"),
-    ("search_successful_ns", "Search (successful)", "Time (ns)"),
-    ("search_unsuccessful_ns", "Search (unsuccessful)", "Time (ns)"),
-    ("inorder_traversal_ns", "In-order traversal", "Time (ns)"),
-    ("delete_all_ns", "Delete (all keys)", "Time (ns)"),
-]
+PATTERNS = ["random", "sorted", "nearly_sorted", "reverse"]
 
-PATTERNS = ["RANDOM", "ASCENDING", "DESCENDING", "PARTIALLY_SORTED"]
-
-
-def find_csv(arg: str | None) -> Path:
-    if arg:
-        p = Path(arg)
-        if not p.is_absolute():
-            p = ROOT / p
-        if not p.is_file():
-            sys.exit(f"File not found: {p}")
-        return p
-    files = sorted(
-        BENCHMARK_DIR.glob("tree_map_benchmark_*.csv"),
-        key=lambda x: x.stat().st_mtime,
-    )
-    if not files:
-        sys.exit(f"No tree_map_benchmark_*.csv under {BENCHMARK_DIR}")
-    return files[-1]
+# operation suffix in CSV -> readable label
+OPERATIONS = {
+    "insert_batch":  "Insert (batch)",
+    "insert_single": "Insert (single)",
+    "search_hit":    "Search (hit)",
+    "search_miss":   "Search (miss)",
+    "inorder":       "In-order traversal",
+    "delete":        "Delete",
+}
 
 
-def load_rows(path: Path) -> list[dict]:
-    header: list[str] | None = None
-    rows: list[dict] = []
-    with path.open(newline="", encoding="utf-8") as f:
-        for row in csv.reader(f):
-            if not row or not row[0] or row[0].startswith("#"):
+def load(path):
+    rows = []
+    with open(path, newline="") as f:
+        for row in csv.DictReader(f):
+            if None in row.values():
                 continue
-            if row[0] == "size_n":
-                header = row
-                continue
-            if header is None or len(row) != len(header):
-                continue
-            rows.append(dict(zip(header, row)))
-    numeric = [
-        "size_n",
-        "insert_batch_ns",
-        "insert_single_calls_sum_ns",
-        "search_successful_ns",
-        "search_unsuccessful_ns",
-        "inorder_traversal_ns",
-        "delete_all_ns",
-    ]
-    for r in rows:
-        for k in numeric:
-            r[k] = int(r[k])
+            rows.append({k: int(v) for k, v in row.items()})
     return rows
 
 
-def pattern_title(p: str) -> str:
-    return p.replace("_", " ").title()
+def main():
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
+    data = {}
+    for m in MAPS:
+        p = BENCHMARK_DIR / f"{m}.csv"
+        if p.is_file():
+            data[m] = load(p)
 
-def main() -> None:
-    csv_path = find_csv(sys.argv[1] if len(sys.argv) > 1 else None)
-    rows = load_rows(csv_path)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for m, rows in data.items():
+        print(f"{m}: {len(rows)} rows, columns: {list(rows[0].keys())}")
 
     try:
         plt.style.use("seaborn-v0_8-whitegrid")
-    except (OSError, ValueError):
-        try:
-            plt.style.use("seaborn-whitegrid")
-        except (OSError, ValueError):
-            plt.rcParams.update({"axes.grid": True, "grid.alpha": 0.35})
+    except Exception:
+        plt.rcParams.update({"axes.grid": True, "grid.alpha": 0.35})
 
-    saved = []
+    nfig = 0
     for pattern in PATTERNS:
-        for key, title, ylab in METRICS:
-            fig, ax = plt.subplots(figsize=(7.5, 4.5), dpi=120)
-            for impl in MAP_ORDER:
-                pts = [
-                    r
-                    for r in rows
-                    if r["input_pattern"] == pattern and r["map_implementation"] == impl
-                ]
-                pts.sort(key=lambda r: r["size_n"])
-                if not pts:
-                    continue
-                xs = [r["size_n"] for r in pts]
-                ys = [r[key] for r in pts]
-                ax.plot(
-                    xs,
-                    ys,
-                    color=COLORS[impl],
-                    linewidth=2,
-                    marker="o",
-                    markersize=3,
-                    label=MAP_LABEL[impl],
-                )
-            ax.set_xlabel("n (number of keys)")
-            ax.set_ylabel(ylab)
-            ax.set_title(f"{title}\nInput: {pattern_title(pattern)}")
-            ax.legend(framealpha=0.95)
-            fig.tight_layout()
-            fname = f"{pattern.lower()}__{key}.png"
-            fig.savefig(OUT_DIR / fname, dpi=160, bbox_inches="tight")
-            plt.close(fig)
-            saved.append(fname)
+        for op_suffix, op_label in OPERATIONS.items():
+            col_name = f"{pattern}_{op_suffix}"
 
-    print(f"CSV: {csv_path}")
-    print(f"Wrote {len(saved)} figures to {OUT_DIR.resolve()}")
+            fig, ax = plt.subplots(figsize=(8, 5))
+            for m, rows in data.items():
+                if col_name not in rows[0]:
+                    continue
+                xs = [r["input_size"] for r in rows]
+                ys = [r[col_name] for r in rows]
+                ax.plot(xs, ys, color=COLORS[m], linewidth=2, marker="o", markersize=3, label=m)
+            ax.set_xlabel("Input size (n)")
+            ax.set_ylabel("Time (ns)")
+            ax.set_title(f"{op_label} — {pattern.replace('_', ' ').title()}")
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig(FIGURES_DIR / f"{pattern}_{op_suffix}.png", dpi=150)
+            plt.close(fig)
+            nfig += 1
+
+    print(f"Saved {nfig} figures to {FIGURES_DIR}")
 
 
 if __name__ == "__main__":

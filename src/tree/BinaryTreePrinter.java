@@ -26,7 +26,7 @@ public class BinaryTreePrinter<N> {
     //private int tspace = 1;
 
     private final BinaryTree<N> tree;
-    /** When non-null, used instead of {@link Position#toString()} for node labels. */
+    /** When non-null, used instead of {@link Position# //toString()} for node labels. */
     private final Function<Position<N>, String> labelFn;
 
     public BinaryTreePrinter(BinaryTree<N> tree) {
